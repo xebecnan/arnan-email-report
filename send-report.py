@@ -9,6 +9,8 @@ import socket
 import socks as sockswrap
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.header import Header
+from email.utils import parseaddr, formataddr
 from httplib2 import socks
 
 from googleapiclient.discovery import build
@@ -37,14 +39,15 @@ def loadMailCfg():
 
 cfg = loadMailCfg()
 
-proxy_server = cfg['proxy_server']
-proxy_port = int(cfg['proxy_port'])
+def setupProxy():
+    proxy_server = cfg['proxy_server']
+    proxy_port = int(cfg['proxy_port'])
 
-sockswrap.setdefaultproxy(sockswrap.PROXY_TYPE_SOCKS5, proxy_server, proxy_port)
-sockswrap.wrapmodule(smtplib)
+    sockswrap.setdefaultproxy(sockswrap.PROXY_TYPE_SOCKS5, proxy_server, proxy_port)
+    sockswrap.wrapmodule(smtplib)
 
-socket.socket = socks.socksocket
-socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, proxy_server, proxy_port)
+    socket.socket = socks.socksocket
+    socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, proxy_server, proxy_port)
 
 def genMail():
     mail_title = cfg['mail_title']
@@ -139,6 +142,8 @@ def gmailSendMessage(mail_title, mail_body):
     sender    = cfg['sender']
     mail_to   = cfg['send_to']
 
+    setupProxy()
+
     # creds, _ = google.auth.default()
     creds = getGoogleCreds()
 
@@ -161,11 +166,36 @@ def gmailSendMessage(mail_title, mail_body):
         send_message = None
     return send_message
 
+def formatAddrAux(s):
+    name, addr = parseaddr(s)
+    return formataddr((Header(name, 'utf-8').encode(), addr))
+
+def qqSemdMail(mail_title, mail_body):
+    smtp_server       = cfg['qqSmtpServer']
+    smtp_port         = cfg['qqSmtpPort']
+    qq_mail_user      = cfg['qqMailUser']
+    qq_mail_auth_code = cfg['qqMailAuthCode']
+    mail_to           = cfg['send_to']
+    smtp_obj = smtplib.SMTP(smtp_server, smtp_port)
+    smtp_obj.ehlo()
+    smtp_obj.starttls()
+    smtp_obj.login(qq_mail_user, qq_mail_auth_code)
+
+    message = MIMEText(mail_body, 'plain', 'utf-8')
+    message['From'] = qq_mail_user
+    message['To']   = mail_to
+    message['Subject'] = Header(mail_title, 'utf-8')
+
+    smtp_obj.sendmail(qq_mail_user, [mail_to], message.as_string())
+    smtp_obj.quit()
+
 def main():
     mail_title, mail_body = genMail()
     # sendMail(mail_title, mail_body)
-    gmailSendMessage(mail_title, mail_body)
+    # gmailSendMessage(mail_title, mail_body)
+    qqSemdMail(mail_title, mail_body)
 
 if __name__ == '__main__':
     main()
+    # qqSemdMail('testMailTitle', 'testMailBody')
 
